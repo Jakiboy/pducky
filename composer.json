@@ -1,0 +1,31 @@
+{
+  "name":"jakiboy/pducky",
+  "version":"0.0.1",
+  "type":"library",
+  "description":"PHP DuckDB Importer",
+  "keywords":[
+    "DuckDB",
+    "SQL",
+    "SQLite3",
+    "CSV",
+    "JSON",
+    "PHP"
+  ],
+  "homepage":"https://github.com/Jakiboy/pducky",
+  "license":"MIT",
+  "authors":[
+    {
+      "name":"Jihad Sinnaour",
+      "email":"mail@jihadsinnaour.com",
+      "role":"Founder"
+    }
+  ],
+  "require":{
+    "php":">=7.4"
+  },
+  "autoload":{
+    "psr-4":{
+      "Pducky\\":"src/"
+    }
+  }
+}
