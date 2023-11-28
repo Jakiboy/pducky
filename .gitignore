@@ -1,4 +1,6 @@
-!duckdb.exe 
+!duckdb.exe
+!duckdb.dll
+!duckdb.so
 composer.phar
 /vendor/
 
