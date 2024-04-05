@@ -1,6 +1,4 @@
-!duckdb.exe
-!duckdb.dll
-!duckdb.so
+*.zip
 composer.phar
 /vendor/
 
