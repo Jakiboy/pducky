@@ -1,0 +1,286 @@
+#!/usr/bin/env php
+<?php
+/**
+ * PDucky CLI Tool
+ * 
+ * A command-line tool for managing DuckDB binaries in PDucky
+ * 
+ * Usage:
+ *   pducky install-binaries    Install DuckDB binaries
+ *   pducky check               Check binary status
+ *   pducky version            Show version information
+ *   pducky help               Show this help
+ * 
+ * @package Pducky
+ * @version 0.2.0
+ */
+
+// Ensure we're running in CLI mode
+if (php_sapi_name() !== 'cli') {
+    echo "This tool must be run from the command line.\n";
+    exit(1);
+}
+
+// Auto-detect if we're in a project or the pducky package itself
+$vendorAutoload = null;
+$pduckeyPath = null;
+
+// Try different autoload paths
+$autoloadPaths = [
+    __DIR__ . '/vendor/autoload.php',           // If running from pducky package root
+    __DIR__ . '/../autoload.php',               // If this is in vendor/bin
+    __DIR__ . '/../../autoload.php',            // Alternative vendor structure
+    __DIR__ . '/../../../autoload.php',         // Deep vendor structure
+    getcwd() . '/vendor/autoload.php',          // Current working directory
+];
+
+foreach ($autoloadPaths as $path) {
+    if (file_exists($path)) {
+        $vendorAutoload = $path;
+        break;
+    }
+}
+
+if (!$vendorAutoload) {
+    echo "❌ Error: Could not find Composer autoloader.\n";
+    echo "   Make sure you're running this from a project with Composer dependencies.\n";
+    exit(1);
+}
+
+// Determine pducky package path
+$possiblePaths = [
+    dirname(__DIR__),                                    // If this is in bin/
+    dirname($vendorAutoload) . '/jakiboy/pducky',       // Standard vendor path
+    getcwd(),                                           // Current directory if it's pducky
+];
+
+foreach ($possiblePaths as $path) {
+    if (file_exists($path . '/composer.json')) {
+        $composerData = json_decode(file_get_contents($path . '/composer.json'), true);
+        if (isset($composerData['name']) && $composerData['name'] === 'jakiboy/pducky') {
+            $pduckeyPath = $path;
+            break;
+        }
+    }
+}
+
+if (!$pduckeyPath) {
+    echo "❌ Error: Could not find pducky package.\n";
+    echo "   Make sure jakiboy/pducky is installed via Composer.\n";
+    exit(1);
+}
+
+require_once $vendorAutoload;
+
+// Parse command line arguments
+$command = $argv[1] ?? 'help';
+
+/**
+ * PDucky CLI class
+ */
+class PduckyCLI 
+{
+    private $pduckeyPath;
+    private $binPath;
+    
+    public function __construct($pduckeyPath) 
+    {
+        $this->pduckeyPath = rtrim($pduckeyPath, '/\\');
+        $this->binPath = $this->pduckeyPath . '/src/bin/';
+    }
+    
+    public function run($command) 
+    {
+        switch ($command) {
+            case 'install-binaries':
+            case 'install':
+                $this->installBinaries();
+                break;
+            case 'check':
+                $this->checkBinaries();
+                break;
+            case 'version':
+                $this->showVersion();
+                break;
+            case 'help':
+            case '--help':
+            case '-h':
+            default:
+                $this->showHelp();
+                break;
+        }
+    }
+    
+    private function installBinaries() 
+    {
+        echo "🦆 PDucky - Installing DuckDB binaries...\n\n";
+        
+        // Check if binaries already exist
+        if ($this->binariesExist()) {
+            echo "✅ DuckDB binaries are already installed.\n";
+            $this->showBinaryInfo();
+            return;
+        }
+        
+        // Check if ZipArchive is available
+        if (!class_exists('ZipArchive')) {
+            echo "❌ Error: PHP ZipArchive extension is required.\n";
+            echo "   Install with: apt-get install php-zip (Ubuntu/Debian)\n";
+            echo "   or: yum install php-zip (CentOS/RHEL)\n";
+            exit(1);
+        }
+        
+        // Create bin directory if needed
+        if (!is_dir($this->binPath)) {
+            mkdir($this->binPath, 0755, true);
+        }
+        
+        // Extract binaries
+        $zipFile = $this->binPath . 'bin.zip';
+        if (!file_exists($zipFile)) {
+            echo "❌ Error: bin.zip not found at {$zipFile}\n";
+            echo "   The pducky package may be incomplete.\n";
+            exit(1);
+        }
+        
+        echo "📦 Extracting binaries from bin.zip...\n";
+        
+        $zip = new ZipArchive();
+        if ($zip->open($zipFile) === TRUE) {
+            if ($zip->extractTo($this->binPath)) {
+                $zip->close();
+                
+                // Make Linux binaries executable
+                if (!$this->isWindows()) {
+                    $linuxBinary = $this->binPath . 'lin/duckdb';
+                    if (file_exists($linuxBinary)) {
+                        chmod($linuxBinary, 0755);
+                        echo "🐧 Made Linux binary executable.\n";
+                    }
+                }
+                
+                echo "\n✅ DuckDB binaries installed successfully!\n\n";
+                $this->showBinaryInfo();
+                
+            } else {
+                $zip->close();
+                echo "❌ Error: Failed to extract bin.zip\n";
+                exit(1);
+            }
+        } else {
+            echo "❌ Error: Could not open bin.zip\n";
+            exit(1);
+        }
+    }
+    
+    private function checkBinaries() 
+    {
+        echo "🦆 PDucky - Checking DuckDB binaries...\n\n";
+        
+        if ($this->binariesExist()) {
+            echo "✅ DuckDB binaries are installed and ready.\n\n";
+            $this->showBinaryInfo();
+        } else {
+            echo "❌ DuckDB binaries are not installed.\n";
+            echo "   Run: pducky install-binaries\n";
+        }
+    }
+    
+    private function showBinaryInfo() 
+    {
+        echo "📍 Binary location: {$this->binPath}\n";
+        
+        if ($this->isWindows()) {
+            $exePath = $this->binPath . 'win/duckdb.exe';
+            $dllPath = $this->binPath . 'win/duckdb.dll';
+            
+            if (file_exists($exePath)) {
+                echo "🔹 Windows executable: " . realpath($exePath) . "\n";
+                echo "   Size: " . $this->formatBytes(filesize($exePath)) . "\n";
+            }
+            if (file_exists($dllPath)) {
+                echo "🔹 Windows library: " . realpath($dllPath) . "\n";
+                echo "   Size: " . $this->formatBytes(filesize($dllPath)) . "\n";
+            }
+        } else {
+            $binFile = $this->binPath . 'lin/duckdb';
+            $libFile = $this->binPath . 'lin/libduckdb.so';
+            
+            if (file_exists($binFile)) {
+                echo "🔹 Linux executable: " . realpath($binFile) . "\n";
+                echo "   Size: " . $this->formatBytes(filesize($binFile)) . "\n";
+                echo "   Executable: " . (is_executable($binFile) ? "Yes" : "No") . "\n";
+            }
+            if (file_exists($libFile)) {
+                echo "🔹 Linux library: " . realpath($libFile) . "\n";
+                echo "   Size: " . $this->formatBytes(filesize($libFile)) . "\n";
+            }
+        }
+    }
+    
+    private function binariesExist() 
+    {
+        if ($this->isWindows()) {
+            return file_exists($this->binPath . 'win/duckdb.exe') && 
+                   file_exists($this->binPath . 'win/duckdb.dll');
+        } else {
+            return file_exists($this->binPath . 'lin/duckdb') && 
+                   file_exists($this->binPath . 'lin/libduckdb.so');
+        }
+    }
+    
+    private function isWindows() 
+    {
+        return strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
+    }
+    
+    private function formatBytes($bytes) 
+    {
+        $units = ['B', 'KB', 'MB', 'GB'];
+        $bytes = max($bytes, 0);
+        $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
+        $pow = min($pow, count($units) - 1);
+        $bytes /= pow(1024, $pow);
+        return round($bytes, 2) . ' ' . $units[$pow];
+    }
+    
+    private function showVersion() 
+    {
+        $composerFile = $this->pduckeyPath . '/composer.json';
+        $version = '0.2.0'; // fallback
+        
+        if (file_exists($composerFile)) {
+            $composerData = json_decode(file_get_contents($composerFile), true);
+            if (isset($composerData['version'])) {
+                $version = $composerData['version'];
+            }
+        }
+        
+        echo "🦆 PDucky CLI Tool\n";
+        echo "Version: {$version}\n";
+        echo "Package: jakiboy/pducky\n";
+        echo "Homepage: https://github.com/Jakiboy/pducky\n";
+    }
+    
+    private function showHelp() 
+    {
+        echo "🦆 PDucky CLI Tool - DuckDB Binary Manager\n\n";
+        echo "Usage:\n";
+        echo "  pducky <command>\n\n";
+        echo "Available commands:\n";
+        echo "  install-binaries    Install DuckDB binaries\n";
+        echo "  install             Alias for install-binaries\n";
+        echo "  check               Check binary installation status\n";
+        echo "  version             Show version information\n";
+        echo "  help                Show this help message\n\n";
+        echo "Examples:\n";
+        echo "  pducky install-binaries    # Install DuckDB binaries\n";
+        echo "  pducky check               # Check if binaries are installed\n";
+        echo "  pducky version             # Show version info\n\n";
+        echo "For more information, visit: https://github.com/Jakiboy/pducky\n";
+    }
+}
+
+// Run the CLI
+$cli = new PduckyCLI($pduckeyPath);
+$cli->run($command);

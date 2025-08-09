@@ -1,0 +1,5 @@
+/.github export-ignore
+/examples export-ignore
+.gitignore export-ignore
+.gitattributes export-ignore
+*.code-workspace export-ignore

@@ -33,14 +33,22 @@
 			"Pducky\\": "src/"
 		}
 	},
+	"bin": [
+		"bin/pducky"
+	],
 	"scripts": {
-		"install-binaries": "php scripts/install-binaries.php",
+		"install-binaries": "php bin/pducky install-binaries",
+		"check-binaries": "php bin/pducky check",
 		"post-install-cmd": [
-			"php scripts/install-binaries.php"
+			"php bin/pducky install-binaries"
 		],
 		"post-update-cmd": [
-			"php scripts/install-binaries.php"
+			"php bin/pducky install-binaries"
 		]
+	},
+	"scripts-descriptions": {
+		"install-binaries": "Install DuckDB binaries",
+		"check-binaries": "Check DuckDB binary installation status"
 	},
 	"archive": {
 		"exclude": [
