@@ -1,9 +1,10 @@
+*.csv
 *.db
+*.gz
 *.zip
 .shell
 .shell.wal
 composer.phar
-temp/
 src/bin/lin/*.so
 src/bin/lin/duckdb
 src/bin/win/*.dll
