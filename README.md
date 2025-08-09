@@ -62,6 +62,12 @@ $rows = (new Pducky\Loader())->connect('data.db')
        ->query('SELECT * FROM product LIMIT 100;');
 ```
 
+## Formats:
+
+* CSV (default)
+* JSON
+* Parquet
+
 ## References:
 
 * [SQL Introduction](https://duckdb.org/docs/stable/sql/introduction)
@@ -69,9 +75,10 @@ $rows = (new Pducky\Loader())->connect('data.db')
 
 ## Todo:
 
-* Add support for **XML** and other structured format
-* Add structured format converter
-* Add header parser
+* Support for **XML**
+* Format converter (e.g., CSV → JSON)
+* CSV header parser (column naming)
+* Automated column parser
 
 ## Authors:
 
