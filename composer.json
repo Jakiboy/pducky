@@ -35,10 +35,25 @@
 	},
 	"scripts": {
 		"post-install-cmd": [
-			"php scripts/install-binaries.php"
+			"@install-binaries"
 		],
 		"post-update-cmd": [
+			"@install-binaries"
+		],
+		"post-autoload-dump": [
+			"@install-binaries"
+		],
+		"install-binaries": [
 			"php scripts/install-binaries.php"
 		]
+	},
+	"scripts-descriptions": {
+		"install-binaries": "Downloads and installs DuckDB binaries"
+	},
+	"extra": {
+		"class": "Pducky\\BinaryInstaller",
+		"branch-alias": {
+			"dev-main": "0.2.x-dev"
+		}
 	}
 }
