@@ -113,7 +113,7 @@ class PduckyCLI
     
     private function installBinaries() 
     {
-        echo "🦆 PDucky - Installing DuckDB binaries...\n\n";
+        echo "PDucky - Installing DuckDB binaries...\n\n";
         
         // Check if binaries already exist
         if ($this->binariesExist()) {
@@ -135,15 +135,45 @@ class PduckyCLI
             mkdir($this->binPath, 0755, true);
         }
         
-        // Extract binaries
+        // Download bin.zip if it doesn't exist
         $zipFile = $this->binPath . 'bin.zip';
         if (!file_exists($zipFile)) {
-            echo "❌ Error: bin.zip not found at {$zipFile}\n";
-            echo "   The pducky package may be incomplete.\n";
-            exit(1);
+            // Check for bin.zip in alternative locations
+            $altLocations = [
+                $this->pduckeyPath . '/src/bin/bin.zip',
+                $this->pduckeyPath . '/bin.zip',
+                dirname($this->binPath) . '/bin.zip'
+            ];
+            
+            $foundZip = false;
+            foreach ($altLocations as $altZip) {
+                if (file_exists($altZip) && filesize($altZip) > 1000) {
+                    echo "Found bin.zip at: {$altZip}\n";
+                    echo "Copying to: {$zipFile}\n";
+                    if (copy($altZip, $zipFile)) {
+                        $foundZip = true;
+                        break;
+                    }
+                }
+            }
+            
+            if (!$foundZip) {
+                echo "❌ bin.zip not found, downloading from GitHub releases...\n";
+                if (!$this->downloadBinZip($zipFile)) {
+                    echo "\n❌ Error: Failed to download bin.zip automatically\n\n";
+                    echo "Manual Installation Steps:\n";
+                    echo "   1. Download: https://github.com/Jakiboy/pducky/releases/latest/download/bin.zip\n";
+                    echo "   2. Place it at: {$zipFile}\n";
+                    echo "   3. Run: pducky install-binaries again\n\n";
+                    echo "Alternative: Use the original bin.zip if available\n";
+                    echo "   Original location: " . dirname($this->binPath) . "/bin/bin.zip\n";
+                    exit(1);
+                }
+                echo "✅ Successfully downloaded bin.zip\n";
+            }
         }
         
-        echo "📦 Extracting binaries from bin.zip...\n";
+        echo "Extracting binaries from bin.zip...\n";
         
         $zip = new ZipArchive();
         if ($zip->open($zipFile) === TRUE) {
@@ -175,7 +205,7 @@ class PduckyCLI
     
     private function checkBinaries() 
     {
-        echo "🦆 PDucky - Checking DuckDB binaries...\n\n";
+        echo "PDucky - Checking DuckDB binaries...\n\n";
         
         if ($this->binariesExist()) {
             echo "✅ DuckDB binaries are installed and ready.\n\n";
@@ -195,11 +225,11 @@ class PduckyCLI
             $dllPath = $this->binPath . 'win/duckdb.dll';
             
             if (file_exists($exePath)) {
-                echo "🔹 Windows executable: " . realpath($exePath) . "\n";
+                echo "Windows executable: " . realpath($exePath) . "\n";
                 echo "   Size: " . $this->formatBytes(filesize($exePath)) . "\n";
             }
             if (file_exists($dllPath)) {
-                echo "🔹 Windows library: " . realpath($dllPath) . "\n";
+                echo "Windows library: " . realpath($dllPath) . "\n";
                 echo "   Size: " . $this->formatBytes(filesize($dllPath)) . "\n";
             }
         } else {
@@ -207,12 +237,12 @@ class PduckyCLI
             $libFile = $this->binPath . 'lin/libduckdb.so';
             
             if (file_exists($binFile)) {
-                echo "🔹 Linux executable: " . realpath($binFile) . "\n";
+                echo "Linux executable: " . realpath($binFile) . "\n";
                 echo "   Size: " . $this->formatBytes(filesize($binFile)) . "\n";
                 echo "   Executable: " . (is_executable($binFile) ? "Yes" : "No") . "\n";
             }
             if (file_exists($libFile)) {
-                echo "🔹 Linux library: " . realpath($libFile) . "\n";
+                echo "Linux library: " . realpath($libFile) . "\n";
                 echo "   Size: " . $this->formatBytes(filesize($libFile)) . "\n";
             }
         }
@@ -232,6 +262,162 @@ class PduckyCLI
     private function isWindows() 
     {
         return strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
+    }
+    
+    private function downloadBinZip($zipFile) 
+    {
+        // Use the correct GitHub releases URL
+        $url = 'https://github.com/Jakiboy/pducky/releases/latest/download/bin.zip';
+        
+        echo "   Downloading from: {$url}\n";
+        
+        // Try different download methods
+        $methods = ['curl', 'file_get_contents', 'wget'];
+        
+        foreach ($methods as $method) {
+            if ($this->downloadWithMethod($url, $zipFile, $method)) {
+                // Verify the downloaded file is actually a valid zip
+                if ($this->isValidZipFile($zipFile)) {
+                    return true;
+                } else {
+                    echo "   Downloaded file is not a valid ZIP, trying next method...\n";
+                    @unlink($zipFile);
+                }
+            }
+        }
+        
+        return false;
+    }
+    
+    private function isValidZipFile($zipFile) 
+    {
+        if (!file_exists($zipFile) || filesize($zipFile) < 1000) {
+            return false;
+        }
+        
+        $zip = new ZipArchive();
+        $result = $zip->open($zipFile, ZipArchive::CHECKCONS);
+        if ($result !== TRUE) {
+            return false;
+        }
+        
+        // Check if the zip contains the expected binary files
+        $hasValidContent = false;
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $filename = $zip->getNameIndex($i);
+            if (strpos($filename, 'win/duckdb.') !== false || 
+                strpos($filename, 'lin/duckdb') !== false ||
+                strpos($filename, 'lin/libduckdb.') !== false) {
+                $hasValidContent = true;
+                break;
+            }
+        }
+        
+        $zip->close();
+        return $hasValidContent;
+    }
+    
+    private function downloadWithMethod($url, $zipFile, $method) 
+    {
+        switch ($method) {
+            case 'curl':
+                if (!function_exists('curl_init')) {
+                    return false;
+                }
+                
+                echo "      Using cURL...\n";
+                $ch = curl_init();
+                curl_setopt($ch, CURLOPT_URL, $url);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+                curl_setopt($ch, CURLOPT_USERAGENT, 'PDucky CLI Tool/1.0');
+                curl_setopt($ch, CURLOPT_TIMEOUT, 300); // 5 minutes timeout
+                curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 30);
+                
+                $data = curl_exec($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $error = curl_error($ch);
+                curl_close($ch);
+                
+                if ($error) {
+                    echo "      cURL error: {$error}\n";
+                    return false;
+                }
+                
+                if ($httpCode === 200 && $data !== false && strlen($data) > 100) {
+                    $result = file_put_contents($zipFile, $data);
+                    if ($result !== false) {
+                        echo "      Downloaded " . $this->formatBytes(strlen($data)) . "\n";
+                        return true;
+                    }
+                }
+                
+                echo "      cURL failed (HTTP {$httpCode})\n";
+                break;
+                
+            case 'wget':
+                if (!$this->isCommandAvailable('wget')) {
+                    return false;
+                }
+                
+                echo "      Using wget...\n";
+                $command = sprintf('wget --user-agent="PDucky CLI Tool/1.0" --timeout=300 -O %s %s 2>&1', 
+                    escapeshellarg($zipFile), escapeshellarg($url));
+                exec($command, $output, $returnCode);
+                
+                if ($returnCode === 0 && file_exists($zipFile) && filesize($zipFile) > 100) {
+                    echo "      Downloaded " . $this->formatBytes(filesize($zipFile)) . "\n";
+                    return true;
+                }
+                
+                echo "      wget failed (exit code: {$returnCode})\n";
+                if (!empty($output)) {
+                    echo "      " . implode("\n      ", array_slice($output, -3)) . "\n";
+                }
+                break;
+                
+            case 'file_get_contents':
+                if (!ini_get('allow_url_fopen')) {
+                    return false;
+                }
+                
+                echo "      Using file_get_contents...\n";
+                $context = stream_context_create([
+                    'http' => [
+                        'method' => 'GET',
+                        'header' => "User-Agent: PDucky CLI Tool/1.0\r\n",
+                        'timeout' => 300,
+                        'follow_location' => 1,
+                        'max_redirects' => 10
+                    ],
+                    'ssl' => [
+                        'verify_peer' => false,
+                        'verify_peer_name' => false
+                    ]
+                ]);
+                
+                $data = @file_get_contents($url, false, $context);
+                if ($data !== false && strlen($data) > 100) {
+                    $result = file_put_contents($zipFile, $data);
+                    if ($result !== false) {
+                        echo "      Downloaded " . $this->formatBytes(strlen($data)) . "\n";
+                        return true;
+                    }
+                }
+                
+                echo "      file_get_contents failed\n";
+                break;
+        }
+        
+        return false;
+    }
+    
+    private function isCommandAvailable($command) 
+    {
+        $whereIsCommand = $this->isWindows() ? 'where' : 'which';
+        exec("$whereIsCommand $command 2>/dev/null", $output, $returnCode);
+        return $returnCode === 0;
     }
     
     private function formatBytes($bytes) 
@@ -256,7 +442,7 @@ class PduckyCLI
             }
         }
         
-        echo "🦆 PDucky CLI Tool\n";
+        echo "PDucky CLI Tool\n";
         echo "Version: {$version}\n";
         echo "Package: jakiboy/pducky\n";
         echo "Homepage: https://github.com/Jakiboy/pducky\n";
@@ -264,7 +450,7 @@ class PduckyCLI
     
     private function showHelp() 
     {
-        echo "🦆 PDucky CLI Tool - DuckDB Binary Manager\n\n";
+        echo "PDucky CLI Tool - DuckDB Binary Manager\n\n";
         echo "Usage:\n";
         echo "  pducky <command>\n\n";
         echo "Available commands:\n";
