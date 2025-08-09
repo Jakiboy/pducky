@@ -1,31 +1,44 @@
 {
-  "name": "jakiboy/pducky",
-  "version": "0.1.0",
-  "type": "library",
-  "description": "PHP DuckDB Importer",
-  "keywords": [
-    "DuckDB",
-    "SQL",
-    "SQLite3",
-    "CSV",
-    "JSON",
-    "PHP"
-  ],
-  "homepage": "https://github.com/Jakiboy/pducky",
-  "license": "MIT",
-  "authors": [
-    {
-      "name": "Jihad Sinnaour",
-      "email": "mail@jihadsinnaour.com",
-      "role": "Founder"
-    }
-  ],
-  "require": {
-    "php": ">=7.4"
-  },
-  "autoload": {
-    "psr-4": {
-      "Pducky\\": "src/"
-    }
-  }
+	"name": "jakiboy/pducky",
+	"version": "0.2.0",
+	"type": "library",
+	"description": "Run fast SQL queries on massive datasets (CSV, JSON, and Parquet) powered by DuckDB.",
+	"keywords": [
+		"DuckDB",
+		"SQL",
+		"SQLite3",
+		"CSV",
+		"JSON",
+		"XML",
+		"Parquet",
+		"Data Analysis",
+		"Big Data",
+		"PHP"
+	],
+	"homepage": "https://github.com/Jakiboy/pducky",
+	"license": "MIT",
+	"authors": [
+		{
+			"name": "Jihad Sinnaour",
+			"email": "mail@jihadsinnaour.com",
+			"role": "Founder"
+		}
+	],
+	"require": {
+		"php": ">=7.4",
+		"ext-zip": "*"
+	},
+	"autoload": {
+		"psr-4": {
+			"Pducky\\": "src/"
+		}
+	},
+	"scripts": {
+		"post-install-cmd": [
+			"php scripts/install-binaries.php"
+		],
+		"post-update-cmd": [
+			"php scripts/install-binaries.php"
+		]
+	}
 }
