@@ -8,7 +8,7 @@
 
 declare(strict_types=1);
 
-class BinaryInstaller
+final class Installer
 {
 	private const GITHUB_API_URL = 'https://api.github.com/repos/jakiboy/pducky/releases/latest';
 	
@@ -255,6 +255,6 @@ class BinaryInstaller
 
 // Run the installer
 if (php_sapi_name() === 'cli') {
-	$installer = new BinaryInstaller();
+	$installer = new Installer();
 	$installer->install();
 }
