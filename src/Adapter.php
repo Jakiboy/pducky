@@ -1,8 +1,8 @@
 <?php
 /**
  * @author     : Jakiboy
- * @version    : 0.0.1-alpha
- * @copyright  : (c) 2023 Jihad Sinnaour <mail@jihadsinnaour.com>
+ * @version    : 0.1.0-beta
+ * @copyright  : (c) 2025 Jihad Sinnaour <me@jihadsinnaour.com>
  * @link       : https://github.com/Jakiboy/pducky
  * @license    : MIT
  */
@@ -12,169 +12,232 @@ declare(strict_types=1);
 namespace Pducky;
 
 /**
- * PHP DuckDB Importer.
+ * PHP DuckDB Importer - Enhanced version.
+ * Supports CSV, JSON, and Parquet file imports with improved error handling.
  * @see https://duckdb.org/docs/
  */
 class Adapter
 {
     /**
-     * @var string $db
-     * @var string $table
+     * @var string $db Database name
+     * @var string $table Table name
+     * @var bool $debug Enable debug mode
+     * @var array $lastError Last error information
      */
     public $db;
     public $table;
+    public $debug = false;
+    public $lastError = [];
     
     /**
-     * @var string $file
-     * @var array $args
-     * @var string $type
-     * @var bool $override
+     * @var string $file Data file path
+     * @var array $args Import arguments
+     * @var string $type File type (csv|json|parquet)
+     * @var bool $override Override existing database
+     * @var resource|null $dbConnection Database connection
      */
     protected $file;
     protected $args;
     protected $type = 'csv';
     protected $override = false;
+    protected $dbConnection = null;
 
     /**
-     * @const string
+     * @const string Binary paths and SQL templates
      */
     protected const WINBIN = '/bin/win/duckdb.exe';
     protected const LINBIN = '/bin/lin/duckdb';
     protected const ATTACH = "ATTACH '{db}.db' AS db (TYPE SQLITE);";
     protected const DETACH = "DETACH db;";
+    protected const DROP = "DROP TABLE IF EXISTS db.{table};";
     protected const CREATE = "CREATE TABLE db.{table} AS SELECT * FROM {func}('{file}', {args});";
     protected const SELECT = "SELECT * FROM {table} LIMIT 100;";
 
     /**
-     * @const array
+     * @const array Default configuration options
      */
     protected const CONFIG = [
-        'ALL_VARCHAR' => true
+        'ALL_VARCHAR' => true,
+        'HEADER' => true,
+        'AUTO_DETECT' => true
     ];
 
     /**
-     * @param string $file
-     * @param array $args
+     * @const array Supported file types and their DuckDB functions
+     */
+    protected const SUPPORTED_TYPES = [
+        'csv' => 'read_csv_auto',
+        'json' => 'read_json_auto',
+        'parquet' => 'read_parquet'
+    ];
+
+    /**
+     * Constructor - Initialize the adapter with a data file.
+     * 
+     * @param string $file Path to the data file
+     * @param array $args Additional import arguments
+     * @throws \Exception If file not found, binary missing, or SQLite unavailable
      */
     public function __construct(string $file, array $args = [])
     {
-        if ( !$this->hasFile($file, false) ) {
-            throw new \Exception('Data file not found');
-
-        } elseif ( !$this->hasBin() ) {
-            throw new \Exception('Missing DuckDB binary');
-
-        } elseif ( !$this->hasSQLite() ) {
-            throw new \Exception('Missing SQLite extension');
-        }
-
-        $this->file = $file;
-        $this->args = $args;
-    }
-
-    /**
-     * Import data file,
-     * Supports (CSV, JSON).
-     * 
-     * @param string $db
-     * @param string $table
-     * @return object
-     */
-    public function import(?string $db = null, string $table = 'temp') : self
-    {
-        $this->db = ($db) ? $db : preg_replace('/\.[^.]+$/', '', basename($this->file));
-
-        $this->table = $table;
-
-        if ( $this->override ) {
-            @unlink("{$this->db}.db");
-            @unlink('.shell.wal');
-            @unlink('.shell');
-        }
-
-        $this->args = array_merge(self::CONFIG, $this->args);
-        $args = '';
-        foreach ( $this->args as $key => $value ) {
-            $args .= "{$key} = ";
-            if ( $value === true ) {
-                $args .= 'true';
-
-            } elseif ( $value === false ) {
-                $args .= 'false';
-
-            } else {
-                $args .= $value;
+        try {
+            if (!$this->hasFile($file, false)) {
+                throw new \Exception("Data file not found: {$file}");
             }
-            $args .= ',';
+
+            if (!$this->hasBin()) {
+                throw new \Exception('Missing DuckDB binary files');
+            }
+
+            if (!$this->hasSQLite()) {
+                throw new \Exception('SQLite3 extension is not available');
+            }
+
+            $this->file = $this->formatPath($file);
+            $this->args = $args;
+            $this->detectFileType();
+            
+            if ($this->debug) {
+                $this->log("Adapter initialized with file: {$this->file}, type: {$this->type}");
+            }
+            
+        } catch (\Exception $e) {
+            $this->setError('INIT_ERROR', $e->getMessage());
+            throw $e;
         }
-
-        $query  = self::ATTACH . PHP_EOL;
-        $query .= self::CREATE . PHP_EOL;
-        $query .= self::DETACH;
-
-        $query = str_replace(
-            ['{db}', '{table}', '{file}', '{args}'],
-            [$this->db, $this->table, $this->file, rtrim($args, ',')],
-            $query
-        );
-
-        if ( $this->type == 'csv' ) {
-            $query = str_replace('{func}', 'read_csv_auto', $query);
-
-        } elseif ( $this->type == 'json' ) {
-            $query = str_replace('{func}', 'read_json_auto', $query);
-
-        } else {
-            throw new \Exception('Unknown file type');
-        }
-
-        $sql = file_put_contents('tmp.sql', $query);
-        $cmd = $this->getBin() . ' .shell ".read tmp.sql"';
-        $this->run($cmd);
-        @unlink("tmp.sql");
-
-        return $this;
     }
 
     /**
-     * Wide query.
+     * Import data file into database.
+     * Supports CSV, JSON, and Parquet files with enhanced error handling.
+     * 
+     * @param string|null $db Database name (auto-generated from filename if null)
+     * @param string $table Table name (default: 'temp')
+     * @return self Fluent interface
+     * @throws \Exception If import fails
+     */
+    public function import(?string $db = null, string $table = 'temp'): self
+    {
+        try {
+            $this->db = $db ?: preg_replace('/\.[^.]+$/', '', basename($this->file));
+            $this->table = $this->sanitizeTableName($table);
+
+            if ($this->override) {
+                $this->cleanupFiles();
+            }
+
+            $query = $this->buildImportQuery();
+            
+            if ($this->debug) {
+                $this->log("Generated SQL Query:\n{$query}");
+            }
+
+            $this->executeQuery($query);
+            
+            if ($this->debug) {
+                $this->log("Import completed successfully");
+            }
+
+            return $this;
+            
+        } catch (\Exception $e) {
+            $this->setError('IMPORT_ERROR', $e->getMessage());
+            throw new \Exception("Import failed: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Execute a wide query and return all results.
      *
-     * @param string $db
-     * @return mixed
+     * @param string|null $sql SQL query (uses default SELECT if null)
+     * @return array|false Query results or false on failure
      */
     public function query(?string $sql = null)
     {
-        $sql = $this->formatQuery($sql);
-        if ( ($r = $this->getDb()->query($sql)) ) {
-            $w = [];
-            while($d = $r->fetchArray(SQLITE3_ASSOC)) {
-                $w[] = $d;
+        try {
+            $sql = $this->formatQuery($sql);
+            $db = $this->getDb();
+            
+            if ($this->debug) {
+                $this->log("Executing query: {$sql}");
             }
-            return $w;
+            
+            $result = $db->query($sql);
+            
+            if ($result === false) {
+                $error = $db->lastErrorMsg();
+                $this->setError('QUERY_ERROR', $error);
+                return false;
+            }
+            
+            $data = [];
+            while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+                $data[] = $row;
+            }
+            
+            $db->close();
+            return $data;
+            
+        } catch (\Exception $e) {
+            $this->setError('QUERY_EXCEPTION', $e->getMessage());
+            return false;
         }
-        return $r;
     }
 
     /**
-     * Single query.
+     * Execute a single value query.
      *
-     * @param string $sql
-     * @return mixed
+     * @param string|null $sql SQL query
+     * @return mixed Single value result or false on failure
      */
     public function single(?string $sql = null)
     {
-        $sql = $this->formatQuery($sql);
-        return $this->getDb()->querySingle($sql);
+        try {
+            $sql = $this->formatQuery($sql);
+            $db = $this->getDb();
+            
+            if ($this->debug) {
+                $this->log("Executing single query: {$sql}");
+            }
+            
+            $result = $db->querySingle($sql);
+            $db->close();
+            
+            return $result;
+            
+        } catch (\Exception $e) {
+            $this->setError('SINGLE_QUERY_EXCEPTION', $e->getMessage());
+            return false;
+        }
     }
 
     /**
-     * Get database.
+     * Get database connection.
      *
-     * @return object
+     * @return \SQLite3 Database connection
+     * @throws \Exception If connection fails
      */
-    public function getDb() : object
+    public function getDb(): \SQLite3
     {
-        return new \SQLite3("{$this->db}.db");
+        try {
+            $dbPath = "{$this->db}.db";
+            
+            if (!file_exists($dbPath)) {
+                throw new \Exception("Database file not found: {$dbPath}");
+            }
+            
+            $connection = new \SQLite3($dbPath);
+            
+            if (!$connection) {
+                throw new \Exception("Failed to connect to database: {$dbPath}");
+            }
+            
+            return $connection;
+            
+        } catch (\Exception $e) {
+            $this->setError('DB_CONNECTION_ERROR', $e->getMessage());
+            throw $e;
+        }
     }
 
     /**
@@ -200,11 +263,213 @@ class Adapter
     }
 
     /**
+     * Import data as Parquet.
+     *
+     * @return self Fluent interface
+     */
+    public function asParquet(): self
+    {
+        $this->type = 'parquet';
+        return $this;
+    }
+
+    /**
+     * Enable debug mode.
+     *
+     * @return self Fluent interface
+     */
+    public function debug(): self
+    {
+        $this->debug = true;
+        return $this;
+    }
+
+    /**
+     * Get last error information.
+     *
+     * @return array Error details
+     */
+    public function getLastError(): array
+    {
+        return $this->lastError;
+    }
+
+    /**
+     * Check if there was an error.
+     *
+     * @return bool True if error exists
+     */
+    public function hasError(): bool
+    {
+        return !empty($this->lastError);
+    }
+
+    /**
+     * Build the complete import query.
+     *
+     * @return string The SQL query
+     * @throws \Exception If unsupported file type
+     */
+    protected function buildImportQuery(): string
+    {
+        $this->args = array_merge(self::CONFIG, $this->args);
+        $args = $this->formatArgs($this->args);
+        
+        $query = self::ATTACH . PHP_EOL;
+        $query .= self::DROP . PHP_EOL;
+        $query .= self::CREATE . PHP_EOL;
+        $query .= self::DETACH;
+
+        $query = str_replace(
+            ['{db}', '{table}', '{file}', '{args}'],
+            [$this->db, $this->table, $this->file, $args],
+            $query
+        );
+
+        if (!isset(self::SUPPORTED_TYPES[$this->type])) {
+            throw new \Exception("Unsupported file type: {$this->type}");
+        }
+
+        return str_replace('{func}', self::SUPPORTED_TYPES[$this->type], $query);
+    }
+
+    /**
+     * Format arguments for DuckDB query.
+     *
+     * @param array $args Arguments array
+     * @return string Formatted arguments string
+     */
+    protected function formatArgs(array $args): string
+    {
+        $formatted = '';
+        foreach ($args as $key => $value) {
+            $formatted .= "{$key} = ";
+            if ($value === true) {
+                $formatted .= 'true';
+            } elseif ($value === false) {
+                $formatted .= 'false';
+            } else {
+                $formatted .= is_string($value) ? "'{$value}'" : $value;
+            }
+            $formatted .= ',';
+        }
+        return rtrim($formatted, ',');
+    }
+
+    /**
+     * Execute the import query.
+     *
+     * @param string $query SQL query to execute
+     * @throws \Exception If execution fails
+     */
+    protected function executeQuery(string $query): void
+    {
+        $tmpFile = 'tmp_' . uniqid() . '.sql';
+        
+        try {
+            if (file_put_contents($tmpFile, $query) === false) {
+                throw new \Exception('Failed to write temporary SQL file');
+            }
+
+            $cmd = $this->getBin() . ' .shell ".read ' . $tmpFile . '"';
+            $output = [];
+            $returnCode = 0;
+            
+            exec($cmd . ' 2>&1', $output, $returnCode);
+            
+            if ($returnCode !== 0) {
+                throw new \Exception('DuckDB execution failed: ' . implode("\n", $output));
+            }
+            
+        } finally {
+            @unlink($tmpFile);
+        }
+    }
+
+    /**
+     * Detect file type from extension.
+     */
+    protected function detectFileType(): void
+    {
+        $extension = strtolower(pathinfo($this->file, PATHINFO_EXTENSION));
+        
+        // Handle compressed files
+        if ($extension === 'gz') {
+            $basename = pathinfo($this->file, PATHINFO_FILENAME);
+            $extension = strtolower(pathinfo($basename, PATHINFO_EXTENSION));
+        }
+        
+        if (isset(self::SUPPORTED_TYPES[$extension])) {
+            $this->type = $extension;
+        }
+    }
+
+    /**
+     * Sanitize table name to prevent SQL injection.
+     *
+     * @param string $tableName Table name to sanitize
+     * @return string Sanitized table name
+     */
+    protected function sanitizeTableName(string $tableName): string
+    {
+        return preg_replace('/[^a-zA-Z0-9_]/', '_', $tableName);
+    }
+
+    /**
+     * Clean up database and temporary files.
+     */
+    protected function cleanupFiles(): void
+    {
+        $files = [
+            "{$this->db}.db",
+            "{$this->db}.db-wal",
+            "{$this->db}.db-shm",
+            '.shell.wal',
+            '.shell'
+        ];
+        
+        foreach ($files as $file) {
+            @unlink($file);
+        }
+    }
+
+    /**
+     * Set error information.
+     *
+     * @param string $code Error code
+     * @param string $message Error message
+     */
+    protected function setError(string $code, string $message): void
+    {
+        $this->lastError = [
+            'code' => $code,
+            'message' => $message,
+            'timestamp' => date('Y-m-d H:i:s')
+        ];
+        
+        if ($this->debug) {
+            $this->log("ERROR [{$code}]: {$message}");
+        }
+    }
+
+    /**
+     * Log debug messages.
+     *
+     * @param string $message Message to log
+     */
+    protected function log(string $message): void
+    {
+        if ($this->debug) {
+            error_log("[PDucky Debug] " . $message);
+        }
+    }
+
+    /**
      * Import data as CSV.
      *
-     * @return object
+     * @return self Fluent interface
      */
-    public function asCsv() : self
+    public function asCsv(): self
     {
         $this->type = 'csv';
         return $this;
