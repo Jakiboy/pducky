@@ -28,16 +28,16 @@ Tested with a large CSV dataset containing 1 million rows (**150 MB**) using PHP
 
 ```bash
 composer require jakiboy/pducky
+vendor/bin/pducky install-binaries
 ```
-
-> **Note**: DuckDB binaries are automatically downloaded during installation.
 
 ## Test:
 
 ```bash
 git clone https://github.com/Jakiboy/pducky.git
-cd pducky/examples
-bash generate.sh
+cd pducky && composer dump-autoload
+composer install-binaries
+cd examples && bash generate.sh
 bash test.sh
 ```
 
