@@ -30,7 +30,7 @@ Tested with a large CSV dataset containing 1 million rows (**150 MB**) using PHP
 composer require jakiboy/pducky
 ```
 
-> **Note**: DuckDB binaries are automatically downloaded during.
+> **Note**: DuckDB binaries are automatically downloaded during installation.
 
 ## Test:
 
