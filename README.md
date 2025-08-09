@@ -1,26 +1,29 @@
 # Pducky
 
-This is a basic PHP [DuckDB](https://duckdb.org/) adapter, that executes SQL queries on large data files (CSV).  
-Using SQLite database & automated CSV parser.  
+[![DuckDB PHP adapter](assets/banner.png)](#)
+
+This is a basic [DuckDB](https://duckdb.org/) PHP adapter, that executes SQL queries on large data files (CSV, JSON, Parquet).  
+Using SQLite database & automated CSV parser.
 
 ## Benchmark:
 
-Tested using large CSV of 1M rows **1 Go**.  
-**Note:** No optimizations applied! The benchmark includes databse creation from CSV & query execution.
+> Tested using a large CSV dataset of 1M rows (**150 MB**).  
+> **Note:** No optimizations were applied. The benchmark includes database creation from compressed CSV and query execution.
 
-![Pducky](assets/screenshot.png)
+[![DuckDB PHP adapter](assets/screenshot.png)](#)
 
 | CPU           | Memory        | Disk     | OS                     | Timing     |
 | ------------- |:-------------:| --------:| ----------------------:| ----------:|
-| i7 (13K)      | 32 Go         | SSD NVMe | **Windows** 10 Pro x64 | **2.19s**  |
+| i7 (13K)      | 32 Go         | NVMe     | **Windows** 10 Pro x64 | **2.19s**  |
+| i7 (8)        | 8 Go          | NVMe     | **Windows** 10 Pro x64 | **3.054s** |
 | Xeon (E22)    | 16 Go         | SSD      | **Linux** Debian 11    | **3.58s**  |
-| i3 (3)        | 8 Go          | SSD      | **Windows** 10 Pro x64 | **30.23s** |
+| *i3 (3)*      | *8 Go*        | *SSD*    | *Windows 10 Pro x64*   | *30.23s*   |
 
 ## Requirements:
 
-* PHP **exec** function (Adapter)
-* PHP **SQLite3** extension (Adapter)
-* PHP **FFI** extension (Loader)
+* PHP **exec** function
+* PHP **SQLite3** extension
+* PHP **FFI** extension (Used by Loader)
 
 ## Install:
 
@@ -35,7 +38,7 @@ composer require jakiboy/pducky
 ```php
 $price = (new Pducky\Adapter('data.csv'))->import()->single(
     'SELECT `price` FROM `temp` WHERE `ean` = "4567890123456";'
-); // 540.23$
+); // 374.08$
 ```
 
 ### Fetch rows:
@@ -48,7 +51,7 @@ $rows = (new Pducky\Adapter('data.csv'))->import()->query(
 
 ### Create database:
 
-Create database "data" with table "product" from compressed file "data.csv.gz".
+Create database `data` with table `product` from a compressed CSV file `data.csv.gz`.
 
 ```php
 (new Pducky\Adapter('data.csv.gz'))->import('data', 'product');
@@ -59,14 +62,8 @@ Create database "data" with table "product" from compressed file "data.csv.gz".
 ```php
 $rows = (new Pducky\Loader())->connect('data.db')
        ->importCsv('data.csv', 'product')
-       ->query('SELECT * FROM product LIMIT 100;');
+       ->query('SELECT * FROM product LIMIT 100;'); // []
 ```
-
-## Formats:
-
-* CSV (default)
-* JSON
-* Parquet
 
 ## References:
 
@@ -75,7 +72,7 @@ $rows = (new Pducky\Loader())->connect('data.db')
 
 ## Todo:
 
-* Support for **XML**
+* Support for **XML** datasets
 * Format converter (e.g., CSV → JSON)
 * CSV header parser (column naming)
 * Automated column parser
