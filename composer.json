@@ -35,26 +35,11 @@
 	},
 	"scripts": {
 		"post-install-cmd": [
-			"Pducky\\Installer::postInstall"
+			"php scripts/install-binaries.php"
 		],
 		"post-update-cmd": [
-			"Pducky\\Installer::postUpdate"
-		],
-		"post-autoload-dump": [
-			"Pducky\\Installer::postAutoloadDump"
-		],
-		"install-binaries": [
-			"Pducky\\Installer::installBinaries"
+			"php scripts/install-binaries.php"
 		]
-	},
-	"scripts-descriptions": {
-		"install-binaries": "Downloads and installs DuckDB binaries"
-	},
-	"extra": {
-		"class": "Pducky\\Installer",
-		"branch-alias": {
-			"dev-main": "0.2.x-dev"
-		}
 	},
 	"archive": {
 		"exclude": [
