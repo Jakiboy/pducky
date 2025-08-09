@@ -35,6 +35,8 @@ composer require jakiboy/pducky
 ## Test:
 
 ```bash
+git clone https://github.com/Jakiboy/pducky.git
+cd pducky/examples
 bash generate.sh
 bash test.sh
 ```
