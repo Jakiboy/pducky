@@ -6,7 +6,7 @@ High-performance PHP adapter for [DuckDB](https://duckdb.org/) that executes SQL
 
 ## Benchmark:
 
-> Tested with a large CSV dataset containing 1 million rows (**150 MB**) using PHP v8.3.  
+Tested with a large CSV dataset containing 1 million rows (**150 MB**) using PHP v8.3.  
 > **Note:** No optimizations were applied. The benchmark includes database creation from compressed CSV and query execution.
 
 [![DuckDB PHP adapter](assets/screenshot.png)](#)
@@ -30,7 +30,7 @@ High-performance PHP adapter for [DuckDB](https://duckdb.org/) that executes SQL
 composer require jakiboy/pducky
 ```
 
-> **Note**: DuckDB binaries are automatically downloaded during installation. See [INSTALLATION.md](INSTALLATION.md) for details.
+> **Note**: DuckDB binaries are automatically downloaded during.
 
 ## Test:
 
