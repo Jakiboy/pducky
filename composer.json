@@ -34,6 +34,7 @@
 		}
 	},
 	"scripts": {
+		"install-binaries": "php src/bin/download-zip.php",
 		"post-install-cmd": [
 			"php scripts/install-binaries.php"
 		],
